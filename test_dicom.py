@@ -5,15 +5,15 @@ import socket
 
 @pytest.fixture
 def dicom_server():
-    """Ensure server is running before tests"""
-    retries = 3
+    """Enhanced server check with port 11112"""
+    retries = 5
     for _ in range(retries):
         try:
-            with socket.create_connection(("localhost", 104), timeout=2):
+            with socket.create_connection(("localhost", 11112), timeout=5):
                 return
         except ConnectionRefusedError:
             time.sleep(5)
-    pytest.fail("DICOM server not available after 3 attempts")
+    pytest.fail("DICOM server unavailable after 5 attempts")
 
 def test_association_negotiation(dicom_server):
     session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")

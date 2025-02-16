@@ -166,8 +166,8 @@ class P_DATA_TF(Packet):
         return p + pay
 
 # ------------------- Layer Binding -------------------
-bind_layers(TCP, DICOM, sport=104)
-bind_layers(TCP, DICOM, dport=104)
+bind_layers(TCP, DICOM, sport=11112)
+bind_layers(TCP, DICOM, dport=11112)
 bind_layers(TCP, DICOM, sport=105)
 bind_layers(TCP, DICOM, dport=105)
 
@@ -184,15 +184,22 @@ bind_layers(UserInformationItem, SCUSCPRoleSelectionSubItem, item_type=0x54)
 
 # ------------------- Network Manager -------------------
 class DICOMSession:
-    def __init__(self, src_ae, dst_ae, dst_ip, dst_port=104):
+    def __init__(self, src_ae, dst_ae, dst_ip, dst_port=11112):  # Match server port
+        # AE title validation
+        if len(src_ae) > 16 or len(dst_ae) > 16:
+            raise ValueError("AE titles must be ≤16 characters (DICOM PS3.7 D.3.3.3)")
+            
         self.src_ae = src_ae.ljust(16)
         self.dst_ae = dst_ae.ljust(16)
         self.dst_ip = dst_ip
         self.dst_port = dst_port
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._connect_with_retry()
+        self.stream = StreamSocket(self.s, DICOM)  # Initialize here
+        self.assoc_established = False
+        self.context_id = 1
 
-    def _connect_with_retry(self, retries=3, delay=2):
+    def _connect_with_retry(self, retries=5, delay=3):
         for attempt in range(retries):
             try:
                 self.s.settimeout(5)
@@ -200,9 +207,8 @@ class DICOMSession:
                 return
             except socket.error as e:
                 if attempt == retries - 1:
-                    raise ConnectionError(f"Failed after {retries} attempts: {e}")
+                    raise ConnectionError(f"Connection failed after {retries} attempts: {e}")
                 time.sleep(delay)
-        self.stream = StreamSocket(self.s, DICOM)
 
     def associate(self):
         app_context = DICOMVariableItem(

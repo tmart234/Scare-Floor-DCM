@@ -13,24 +13,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dcmtk
       
-      # Configure test AE
       - name: Create config
         run: |
           mkdir -p /tmp/dcmtk
           echo "[TEST_AE]" > /tmp/dcmtk/dcmqrscp.cfg
           echo "HostName = localhost" >> /tmp/dcmtk/dcmqrscp.cfg
-          echo "Port = 104" >> /tmp/dcmtk/dcmqrscp.cfg
+          echo "Port = 11112" >> /tmp/dcmtk/dcmqrscp.cfg  # Use non-privileged port
           echo "StorageDir = /tmp/storage" >> /tmp/dcmtk/dcmqrscp.cfg
+          echo "AETitle = TEST_AE" >> /tmp/dcmtk/dcmqrscp.cfg  # Required by dcmqrscp
       
       - name: Start DICOM server
         run: |
           mkdir -p /tmp/storage
-          # Run in background with verbose logging
-          dcmqrscp -c /tmp/dcmtk/dcmqrscp.cfg -d > /tmp/dcmtk-server.log 2>&1 &
-          # Wait until port 104 is available
-          timeout 30 bash -c 'until nc -z localhost 104; do sleep 1; done'
-          echo "Server status check:"
-          netstat -tulpn | grep 104
+          # Run on non-privileged port 11112
+          dcmqrscp -c /tmp/dcmtk/dcmqrscp.cfg -d --port 11112 > /tmp/dcmtk-server.log 2>&1 &
+          # Add initial sleep for server startup
+          sleep 5  
+          # Extended timeout with better status checks
+          timeout 60 bash -c 'while ! nc -z localhost 11112; do sleep 2; echo "Waiting..."; done'
+          echo "Server status:"
+          ss -tulpn | grep 11112
           echo "Server log:"
           cat /tmp/dcmtk-server.log
         
