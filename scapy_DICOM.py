@@ -118,6 +118,15 @@ class A_ASSOCIATE_RQ(Packet):
         StrFixedLenField("reserved3", b"\x00"*32, 32),
         PacketListField("variable_items", [], DICOMVariableItem),
     ]
+    pres_context = DICOMVariableItem(
+    item_type=0x20,
+    data=bytes([
+        0x30, 0x00,  # Presentation Context ID
+        0x00, 0x00, 0x00, 0x40,  # Item length
+        0x01, 0x00, 0x00, 0x00,  # Abstract syntax: 1.2.840.10008.5.1.4.1.1.2 (CT Storage)
+        0x30, 0x00, 0x00, 0x00,  # Transfer syntax: 1.2.840.10008.1.2 (Implicit VR Little Endian)
+    ])
+)
 
 class A_ASSOCIATE_AC(A_ASSOCIATE_RQ):
     name = "A-ASSOCIATE-AC"
@@ -289,7 +298,7 @@ class DICOMSession:
 if __name__ == "__main__":
     try:
         # Associate with remote AE
-        session = DICOMSession("LOCAL_AE", "REMOTE_AE", "192.168.1.100")
+        session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")
         if session.associate():
             print("Association established")
             # Send sample DICOM dataset

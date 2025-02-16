@@ -25,16 +25,14 @@ jobs:
       - name: Start DICOM server
         run: |
           mkdir -p /tmp/storage
-          # Run on non-privileged port 11112
-          dcmqrscp -c /tmp/dcmtk/dcmqrscp.cfg -d --port 11112 > /tmp/dcmtk-server.log 2>&1 &
-          # Add initial sleep for server startup
-          sleep 5  
-          # Extended timeout with better status checks
-          timeout 60 bash -c 'while ! nc -z localhost 11112; do sleep 2; echo "Waiting..."; done'
+          # Use storescp instead of dcmqrscp for C-STORE operations
+          storescp +sd /tmp/storage --fork -aet TEST_AE -p 11112 -v > /tmp/dcmtk-server.log 2>&1 &
+          sleep 2  # Reduced sleep since storescp starts faster
           echo "Server status:"
           ss -tulpn | grep 11112
           echo "Server log:"
           cat /tmp/dcmtk-server.log
+          timeout 30 bash -c 'while ! grep "Ready for Presentation Contexts" /tmp/dcmtk-server.log; do sleep 1; done'
         
       # Install Python dependencies
       - name: Setup Python
