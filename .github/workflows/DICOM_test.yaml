@@ -38,4 +38,4 @@ jobs:
       
       # Run tests
       - name: Execute tests
-        run: python -m pytest tests/test_dicom.py -v
+        run: python -m pytest test_dicom.py -v
