@@ -34,7 +34,7 @@ jobs:
       
       - name: Install requirements
         run: |
-          python -m pip install scapy boofuzz
+          python -m pip install scapy boofuzz pytest
       
       # Run tests
       - name: Execute tests
