@@ -1,10 +1,24 @@
 from scapy_DICOM import DICOMSession, SCUSCPRoleSelectionSubItem
 import pytest
+import time
+import socket
 
-def test_association_negotiation():
+@pytest.fixture
+def dicom_server():
+    """Ensure server is running before tests"""
+    retries = 3
+    for _ in range(retries):
+        try:
+            with socket.create_connection(("localhost", 104), timeout=2):
+                return
+        except ConnectionRefusedError:
+            time.sleep(5)
+    pytest.fail("DICOM server not available after 3 attempts")
+
+def test_association_negotiation(dicom_server):
     session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")
-    assert session.associate(), "Association Failed"
-    session.abort()
+    assert session.associate(), "Association should succeed"
+    session.release()
 
 def test_invalid_ae_title():
     session = DICOMSession("INVALID_AE", "BAD_AE", "localhost")

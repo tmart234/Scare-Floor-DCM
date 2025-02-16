@@ -190,14 +190,19 @@ class DICOMSession:
         self.dst_ip = dst_ip
         self.dst_port = dst_port
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.settimeout(5)
-        try:
-            self.s.connect((dst_ip, dst_port))
-        except socket.error as e:
-            raise Exception(f"Connection failed: {e}")
+        self._connect_with_retry()
+
+    def _connect_with_retry(self, retries=3, delay=2):
+        for attempt in range(retries):
+            try:
+                self.s.settimeout(5)
+                self.s.connect((self.dst_ip, self.dst_port))
+                return
+            except socket.error as e:
+                if attempt == retries - 1:
+                    raise ConnectionError(f"Failed after {retries} attempts: {e}")
+                time.sleep(delay)
         self.stream = StreamSocket(self.s, DICOM)
-        self.assoc_established = False
-        self.context_id = 1
 
     def associate(self):
         app_context = DICOMVariableItem(
