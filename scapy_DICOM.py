@@ -132,12 +132,11 @@ class A_ASSOCIATE_RJ(Packet):
     ]
 
 class A_RELEASE_RQ(Packet):
+    name = "A-RELEASE-RQ"  
     fields_desc = [
-        # Reserved fields should be zero but not validated (PS3.8 9.3.6)
-        IntField("reserved", 0, fuzzable=True), 
-        IntField("reason", 0x00000000, fuzzable=True)
+        IntField("reserved", 0), 
+        IntField("reason", 0x00000000)
     ]
-
 
 class A_RELEASE_RP(A_RELEASE_RQ):
     name = "A-RELEASE-RP"
@@ -161,9 +160,10 @@ class P_DATA_TF(Packet):
     ]
     
     def post_build(self, p, pay):
-        length = len(self.data)
-        return p[:4] + struct.pack("!I", length) + pay  # Explicit length overriding for fuzzing
-
+        if self.pdv_length is None:  # Restore conditional check
+            pdv_length = len(self.data) + 4
+            p = struct.pack("!I", pdv_length) + p[4:]
+        return p + pay
 
 # ------------------- Layer Binding -------------------
 bind_layers(TCP, DICOM, sport=104)

@@ -1,4 +1,5 @@
 from scapy_DICOM import DICOMSession, SCUSCPRoleSelectionSubItem
+import pytest
 
 def test_association_negotiation():
     session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")
@@ -8,6 +9,16 @@ def test_association_negotiation():
 def test_invalid_ae_title():
     session = DICOMSession("INVALID_AE", "BAD_AE", "localhost")
     assert not session.associate(), "Should reject invalid AE titles"
+
+def test_valid_association():
+    with DICOMSession("TEST_SCU", "TEST_SCP", "localhost") as session:
+        assert session.associate(), "Association should succeed with valid AE titles"
+        session.release()
+
+def test_invalid_ae_title_length():
+    with pytest.raises(Exception):
+        # AE titles should be 16 chars max (PS3.8 9.3.2.1)
+        DICOMSession("A"*17, "B"*17, "localhost")
 
 def test_unsupported_abstract_syntax():
     # Test abstract-syntax-not-supported (PS3.8 9.3.3)

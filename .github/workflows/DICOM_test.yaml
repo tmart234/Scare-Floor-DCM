@@ -39,3 +39,7 @@ jobs:
       # Run tests
       - name: Execute tests
         run: python -m pytest test_dicom.py -v
+
+      # Run server
+      - name: Execute server
+        run: python fuzzer.py
