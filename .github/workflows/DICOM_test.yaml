@@ -1,0 +1,41 @@
+name: DICOM Protocol Testing
+on: [push]
+
+jobs:
+  test-dicom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Setup DCMTK
+      - name: Install DCMTK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dcmtk
+      
+      # Configure test AE
+      - name: Create config
+        run: |
+          mkdir -p /tmp/dcmtk
+          echo "[TEST_AE]" > /tmp/dcmtk/dcmqrscp.cfg
+          echo "HostName = localhost" >> /tmp/dcmtk/dcmqrscp.cfg
+          echo "Port = 104" >> /tmp/dcmtk/dcmqrscp.cfg
+          echo "StorageDir = /tmp/storage" >> /tmp/dcmtk/dcmqrscp.cfg
+      
+      # Start server
+      - name: Start DICOM server
+        run: dcmqrscp -c /tmp/dcmtk/dcmqrscp.cfg &>/dev/null &
+      
+      # Install Python dependencies
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+      
+      - name: Install requirements
+        run: |
+          python -m pip install scapy boofuzz
+      
+      # Run tests
+      - name: Execute tests
+        run: python -m pytest tests/test_dicom.py -v
