@@ -1,3 +1,9 @@
+config.vm.post_up_message = "DCMTK CTF Ready on port 11112"
+config.vm.define_checkpoint do |checkpoint|
+  checkpoint.name = "pre_provision_state"
+  checkpoint.action :snapshot
+end
+
 Vagrant.configure("2") do |config|
     config.vm.box = "dcmtk-ctf"
     config.vm.box_url = "file://dcmtk-ctf.box"

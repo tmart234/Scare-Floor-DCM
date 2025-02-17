@@ -1,52 +1,83 @@
 #!/bin/bash
-# called by packer .hcl
-# Aim for minimal setup (<100MB install footprint)
+# Fail fast on errors
+set -euo pipefail
+
+# Network check
+ping -c 4 google.com || { echo "No network!"; exit 1; }
+
+# System setup
+export DEBIAN_FRONTEND=noninteractive
 apt-get update
+apt-get upgrade -y
+
+# Install build dependencies
 apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    virtualbox-guest-utils
+    git build-essential cmake libpng-dev libtiff-dev \
+    libssl-dev libxml2-dev libicu-dev zlib1g-dev \
+    libwrap0-dev libjpeg-dev libcharls-dev
 
-pip3 install --no-cache-dir scapy boofuzz
+# Install runtime dependencies
+apt-get install -y \
+    python3 python3-pip virtualbox-guest-utils
 
-mkdir -p /var/dicom/storage
-chmod 777 /var/dicom/storage
-
-# DCMTK install
+# DCMTK vulnerable version install
 git clone https://github.com/DCMTK/dcmtk.git
 cd dcmtk
-git checkout 59f75a8 # vulnerable v3.6.8
+git checkout 59f75a8  # Vulnerable version
 mkdir build && cd build
-cmake -DBUILD_SHARED_LIBS=OFF ..
+cmake -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=/usr ..
 make -j$(nproc)
-sudo make install
+make install
 
-# Create flag accessible only via exploit
+# CTF Challenge Setup
+# Create flag
 echo "HTB{b0f_t0_r00t_v1a_dcmtk}" | sudo tee /root/flag.txt
-sudo chmod 600 /root/flag.txt
+chmod 600 /root/flag.txt
 
-# Configure vulnerable service to expose flag on crash
-echo '[global]
+# Vulnerable service config
+cat <<EOF | sudo tee /etc/dcmtk/dcmqrscp.cfg
+[global]
   NetworkTCPPort = 11112
   AEtitle = CTF_SERVER
   MaxPDULength = 16384
-  # Insecure crash handler
-  OnCrash = /usr/bin/expose_flag.sh' | sudo tee /etc/dcmtk/dcmqrscp.cfg
+  OnCrash = /usr/bin/expose_flag.sh
+EOF
 
-# Create vulnerable SUID binary
-echo '#!/bin/bash
-if [ -f "/tmp/exploit_trigger" ]; then
-  cat /root/flag.txt
-else
-  echo "Processing DICOM..."
-fi' | sudo tee /usr/bin/vuln_dicom_handler
+# SUID binary exploit
+cat <<EOF | sudo tee /usr/bin/vuln_dicom_handler.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
-sudo chmod +s /usr/bin/vuln_dicom_handler
+int main() {
+    if (access("/tmp/exploit_trigger", F_OK) == 0) {
+        setuid(0);
+        system("/bin/cat /root/flag.txt");
+    } else {
+        printf("Processing DICOM...\\n");
+    }
+    return 0;
+}
+EOF
 
-# Create trigger and expose flag
-echo '#!/bin/bash
+sudo gcc -o /usr/bin/vuln_dicom_handler /usr/bin/vuln_dicom_handler.c
+sudo rm /usr/bin/vuln_dicom_handler.c
+sudo chown root:root /usr/bin/vuln_dicom_handler
+sudo chmod 4755 /usr/bin/vuln_dicom_handler
+
+# Crash handler script
+cat <<EOF | sudo tee /usr/bin/expose_flag.sh
+#!/bin/bash
 touch /tmp/exploit_trigger
 chmod 666 /tmp/exploit_trigger
-/usr/bin/vuln_dicom_handler | tee /var/log/flag_exposed.log' | sudo tee /usr/bin/expose_flag.sh
-
+/usr/bin/vuln_dicom_handler | tee /var/log/flag_exposed.log
+EOF
 sudo chmod +x /usr/bin/expose_flag.sh
+
+# Final checks
+if [ ! -x "/usr/bin/storescp" ]; then
+    echo "DCMTK installation failed!" >&2
+    exit 1
+fi
+
+echo "Provisioning completed successfully"

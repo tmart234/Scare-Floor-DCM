@@ -1,19 +1,26 @@
-source "virtualbox-iso" "dcmtk-ctf" {
-  iso_url          = "https://releases.ubuntu.com/releases/22.04.4/ubuntu-22.04.5-live-server-amd64.iso"
-  iso_checksum     = "sha256:9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0"
-  guest_os_type    = "Ubuntu_64"
-  ssh_username     = "vagrant"
-  ssh_password     = "vagrant"
+source "virtualbox-ovf" "dcmtk-ctf" {
+  ova_url          = "https://cloud-images.ubuntu.com/releases/24.04/release-20250211/ubuntu-24.04-server-cloudimg-amd64.ova"
+  ova_checksum     = "sha256:8c9f3dd1d04d4e0d09a7b62a1de8173ea8b45420915490e219d710ed4c6fdcdc"
+  headless     = true
+  ssh_username = "ubuntu"
+  ssh_password = "ubuntu"
   ssh_timeout      = "30m"
-  shutdown_command = "echo 'vagrant' | sudo -S shutdown -P now"
-  vboxmanage = [
-    ["modifyvm", "{{.Name}}", "--memory", "2048"],
-    ["modifyvm", "{{.Name}}", "--cpus", "2"]
+  
+  vboxmanage_post = [
+    ["modifyvm", "{{.Name}}", "--natpf1", "guestssh,tcp,,2222,,22"]
   ]
+
+  boot_command = [
+    "<enter><wait>",
+    "linux /casper/vmlinuz autoinstall ds=nocloud-net\\;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/<wait>",
+    "<enter>"
+  ]
+  
+  http_directory = "http"
 }
 
 build {
-  sources = ["source.virtualbox-iso.dcmtk-ctf"]
+  sources = ["source.virtualbox-ova.dcmtk-ctf"]
 
   provisioner "shell" {
     script = "provision.sh"
@@ -27,13 +34,13 @@ build {
 packer {
   required_plugins {
     vagrant = {
-      version = ">= 1.0.3"
+      version = ">= 1.1.4"
       source  = "github.com/hashicorp/vagrant"
     }
   }
     required_plugins {
       virtualbox = {
-        version = "~> 1"
+        version = ">= 1.0.6"
         source  = "github.com/hashicorp/virtualbox"
       }
   }
