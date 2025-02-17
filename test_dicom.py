@@ -1,4 +1,4 @@
-from scapy_DICOM import DICOMSession, SCUSCPRoleSelectionSubItem
+from solution.scapy_DICOM import DICOMSession, SCUSCPRoleSelectionSubItem
 import pytest
 import time
 import socket

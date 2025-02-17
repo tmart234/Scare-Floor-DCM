@@ -1,6 +1,6 @@
 # Add new file: dicom_fuzzer.py
 from boofuzz import *
-from scapy_DICOM import DICOM
+from solution.scapy_DICOM import DICOM
 
 def build_fuzzer():
     session = Session(

