@@ -1,6 +1,6 @@
 source "virtualbox-ovf" "dcmtk-ctf" {
-  ova_url          = "https://cloud-images.ubuntu.com/releases/24.04/release-20250211/ubuntu-24.04-server-cloudimg-amd64.ova"
-  ova_checksum     = "sha256:8c9f3dd1d04d4e0d09a7b62a1de8173ea8b45420915490e219d710ed4c6fdcdc"
+  source_path  = "https://cloud-images.ubuntu.com/releases/24.04/release-20250211/ubuntu-24.04-server-cloudimg-amd64.ova"
+  checksum     = "sha256:8c9f3dd1d04d4e0d09a7b62a1de8173ea8b45420915490e219d710ed4c6fdcdc"
   headless     = true
   ssh_username = "ubuntu"
   ssh_password = "ubuntu"
@@ -9,18 +9,12 @@ source "virtualbox-ovf" "dcmtk-ctf" {
   vboxmanage_post = [
     ["modifyvm", "{{.Name}}", "--natpf1", "guestssh,tcp,,2222,,22"]
   ]
-
-  boot_command = [
-    "<enter><wait>",
-    "linux /casper/vmlinuz autoinstall ds=nocloud-net\\;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/<wait>",
-    "<enter>"
-  ]
   
   http_directory = "http"
 }
 
 build {
-  sources = ["source.virtualbox-ova.dcmtk-ctf"]
+  sources = ["source.virtualbox-ovf.dcmtk-ctf"]
 
   provisioner "shell" {
     script = "provision.sh"
