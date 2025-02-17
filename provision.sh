@@ -24,6 +24,14 @@ sudo make install
 echo "HTB{b0f_t0_r00t_v1a_dcmtk}" | sudo tee /root/flag.txt
 sudo chmod 600 /root/flag.txt
 
+# Configure vulnerable service to expose flag on crash
+echo '[global]
+  NetworkTCPPort = 11112
+  AEtitle = CTF_SERVER
+  MaxPDULength = 16384
+  # Insecure crash handler
+  OnCrash = /usr/bin/expose_flag.sh' | sudo tee /etc/dcmtk/dcmqrscp.cfg
+
 # Create vulnerable SUID binary
 echo '#!/bin/bash
 if [ -f "/tmp/exploit_trigger" ]; then
@@ -33,3 +41,11 @@ else
 fi' | sudo tee /usr/bin/vuln_dicom_handler
 
 sudo chmod +s /usr/bin/vuln_dicom_handler
+
+# Create trigger and expose flag
+echo '#!/bin/bash
+touch /tmp/exploit_trigger
+chmod 666 /tmp/exploit_trigger
+/usr/bin/vuln_dicom_handler | tee /var/log/flag_exposed.log' | sudo tee /usr/bin/expose_flag.sh
+
+sudo chmod +x /usr/bin/expose_flag.sh
