@@ -5,8 +5,10 @@ source "virtualbox-ovf" "dcmtk-ctf" {
   ssh_username = "ubuntu"
   ssh_password = "ubuntu"
   ssh_timeout      = "30m"
+  headless         = true
   
   vboxmanage_post = [
+    ["modifyvm", "{{.Name}}", "--natpf1", "dicom,tcp,,11112,,11112"],
     ["modifyvm", "{{.Name}}", "--natpf1", "guestssh,tcp,,2222,,22"]
   ]
   
@@ -28,7 +30,7 @@ build {
 packer {
   required_plugins {
     vagrant = {
-      version = ">= 1.1.4"
+      version = ">= 1.1.5"
       source  = "github.com/hashicorp/vagrant"
     }
   }

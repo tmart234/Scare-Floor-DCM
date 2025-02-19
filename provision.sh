@@ -2,6 +2,9 @@
 # Fail fast on errors
 set -euo pipefail
 
+journalctl -u cloud-init --no-pager > /var/log/cloud-init.log
+systemctl status ssh --no-pager > /var/log/ssh-status.log
+
 # Network check
 ping -c 4 google.com || { echo "No network!"; exit 1; }
 

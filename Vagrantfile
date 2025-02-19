@@ -1,25 +1,34 @@
-config.vm.post_up_message = "DCMTK CTF Ready on port 11112"
-config.vm.define_checkpoint do |checkpoint|
-  checkpoint.name = "pre_provision_state"
-  checkpoint.action :snapshot
+Vagrant.configure("2") do |config|  
+    # ---- DICOM Server (Machine A) ----  
+  config.vm.define "dicom" do |dicom|  
+    dicom.vm.box = "ubuntu/jammy64"  
+    dicom.vm.hostname = "dicom.htb"  
+    # Internal network for inter-VM communication  
+    dicom.vm.network "private_network", ip: "192.168.56.10", 
+      virtualbox__intnet: "htb-internal"  
+    # Provision with Ansible  
+    dicom.vm.provision "ansible" do |ansible|  
+      ansible.playbook = "ansible/playbook-a.yml"  
+      ansible.compatibility_mode = "2.0"  
+    end  
+  end  
+
+  # ---- PACS Server (Machine B) ----  
+  config.vm.define "pacs" do |pacs|  
+    pacs.vm.box = "generic/alpine38"  
+    pacs.vm.hostname = "pacs.htb"  
+    pacs.vm.network "private_network", ip: "192.168.56.20",  
+      virtualbox__intnet: "htb-internal"  
+    pacs.vm.provision "ansible" do |ansible|  
+      ansible.playbook = "ansible/playbook-b.yml"  
+      ansible.compatibility_mode = "2.0"  
+    end  
+  end  
+  # Post-creation message
+  config.vm.post_up_message = <<-MESSAGE
+  [+] DICOM CTF Challenge Ready!
+  [+] Connect to: storescp://127.0.0.1:11112
+  [+] Use AE Title: CTF_SERVER
+  MESSAGE
 end
 
-Vagrant.configure("2") do |config|
-    config.vm.box = "dcmtk-ctf"
-    config.vm.box_url = "file://dcmtk-ctf.box"
-    
-    config.vm.network "forwarded_port", guest: 11112, host: 11112
-    
-    config.vm.provider "virtualbox" do |vb|
-      vb.memory = 2048
-      vb.cpus = 2
-      vb.customize ["modifyvm", :id, "--ioapic", "on"]
-    end
-  
-    config.vm.provision "shell", inline: <<-SHELL
-      nohup storescp --verbose --fork --promiscuous \
-        --aetitle TEST_AE \
-        --output-directory /var/dicom/storage \
-        --port 11112 > /var/log/dcmtk.log 2>&1 &
-    SHELL
-  end

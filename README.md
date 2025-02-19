@@ -1,13 +1,14 @@
-Scare Floor DCM is a vulnerable DICOM CTF Box
+Scare Floor DCM is a vulnerable DICOM CTF
 
 ## Build & Run CTF VM
 
 1. **Install Prerequisites**:
-   - Install [Packer](https://developer.hashicorp.com/packer/docs/install) 
-   - Install [Vagrant](https://developer.hashicorp.com/vagrant/docs/installation)
+   - Install [Packer](https://developer.hashicorp.com/packer/docs/install) for VM creation
+   - Install [Vagrant](https://developer.hashicorp.com/vagrant/docs/installation) for running multiple VMs on an isolated network
    - Install [VirtualBox](https://www.virtualbox.org/)
+   - Install [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) for automatic machine provisioning and configuration
 
-2. **Build the VM and Start the VM**:
+2. **Build the VMs and Start vagrant**:
    ```bash
    make all
 

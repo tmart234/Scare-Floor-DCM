@@ -1,7 +1,7 @@
 # Add new file: dicom_fuzzer.py
 from boofuzz import *
 from solution.scapy_DICOM import DICOM
-from solution.fuzzing_monitor import FlagExposureMonitor
+from solution.fuzzer.fuzzing_monitor import FlagExposureMonitor
 import time
 
 def build_fuzzer():
