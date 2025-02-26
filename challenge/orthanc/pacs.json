@@ -1,0 +1,12 @@
+{
+    "Name": "CTF_Orthanc",
+    "DicomAet": "CTF_ORTHANC",
+    "StorageDirectory": "/var/lib/orthanc/db",
+    "DicomModalities": {
+      "vuln-scp": ["VULNERABLE_AE", "dcmtk-scp", 11112]
+    },
+    "AuthenticationEnabled": false,  // Auth disabled
+    "DicomAlwaysAllowEcho": true,    // Allow any echo
+    "DicomCheckModalityHost": false  // Allow host spoofing
+  }
+  

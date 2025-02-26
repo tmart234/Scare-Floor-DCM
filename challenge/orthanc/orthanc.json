@@ -1,0 +1,13 @@
+{
+    "Name": "Orthanc PACS Server",
+    "DicomPort": 4242,
+    "HttpPort": 8042,
+    "AuthenticationEnabled": false,
+    "RemoteAccessAllowed": true,
+    "DicomModalities": {
+      "dmctk": ["DMCTK", "192.168.10.2", 11112]
+    },
+    "RegisteredUsers": {
+      "admin": "weakpassword123"
+    }
+  }

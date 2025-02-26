@@ -1,0 +1,71 @@
+---
+- name: Install DCMTK and dependencies
+  apt:
+    name:
+      - dcmtk
+      - netcat
+      - python3
+      - python3-pip
+      - python3-dev
+      - build-essential
+    state: present
+    update_cache: yes
+
+- name: Install Python packages
+  pip:
+    name:
+      - pydicom
+      - pynetdicom
+      - flask
+      - requests
+    state: present
+
+- name: Create DMCTK directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  with_items:
+    - /opt/dmctk
+    - /opt/dmctk/web-interface
+    - /opt/dmctk/web-interface/static
+    - /opt/dmctk/web-interface/static/js
+    - /opt/dmctk/web-interface/static/css
+
+- name: Copy query service
+  template:
+    src: query-service.py.j2
+    dest: /opt/dmctk/query-service.py
+    mode: '0755'
+
+- name: Copy start service script
+  template:
+    src: start-service.sh.j2
+    dest: /opt/dmctk/start-service.sh
+    mode: '0755'
+
+- name: Copy web interface files
+  copy:
+    src: web-interface/
+    dest: /opt/dmctk/web-interface/
+    mode: '0644'
+
+- name: Add second flag to JavaScript file
+  lineinfile:
+    path: /opt/dmctk/web-interface/static/js/obfuscated.js
+    line: "// {{ flag2 }}"
+    create: yes
+
+- name: Build and run DMCTK container
+  docker_container:
+    name: dmctk
+    image: ubuntu:20.04
+    restart_policy: always
+    command: /opt/dmctk/start-service.sh
+    ports:
+      - "{{ dmctk_port }}:5000"
+    volumes:
+      - /opt/dmctk:/opt/dmctk
+    networks:
+      - name: dicom_net
+        ipv4_address: "{{ dmctk_ip }}"

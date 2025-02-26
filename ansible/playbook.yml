@@ -1,0 +1,30 @@
+---
+- name: Deploy DICOM CTF Infrastructure
+  hosts: all
+  become: yes
+  vars:
+    orthanc_port: 4242
+    orthanc_web_port: 8042
+    dmctk_port: 5000
+    internal_network: "192.168.10.0/24"
+    orthanc_ip: "192.168.10.1"
+    dmctk_ip: "192.168.10.2"
+    flag1: "FLAG{d1c0m_m3t4d4t4_3xtr4ct10n}"
+    flag2: "FLAG{web_1nt3rf4c3_c0mm4nd_1nj3ct10n}"
+    flag3: "FLAG{n3tw0rk_r4c3_c0nd1t10n_3xpl01t}"
+
+  roles:
+    - role: orthanc
+      when: inventory_hostname in groups['orthanc_servers']
+    
+    - role: dmctk
+      when: inventory_hostname in groups['dmctk_servers']
+
+  post_tasks:
+    - name: Verify connectivity between servers
+      wait_for:
+        host: "{{ orthanc_ip if inventory_hostname in groups['dmctk_servers'] else dmctk_ip }}"
+        port: "{{ orthanc_port if inventory_hostname in groups['dmctk_servers'] else dmctk_port }}"
+        timeout: 30
+      register: connection_check
+      failed_when: connection_check.failed

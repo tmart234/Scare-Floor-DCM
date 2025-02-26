@@ -1,4 +1,4 @@
-source "virtualbox-ovf" "dcmtk-ctf" {
+source "virtualbox-ovf" "scp" {
   source_path  = "https://cloud-images.ubuntu.com/releases/24.04/release-20250211/ubuntu-24.04-server-cloudimg-amd64.ova"
   checksum     = "sha256:8c9f3dd1d04d4e0d09a7b62a1de8173ea8b45420915490e219d710ed4c6fdcdc"
   headless     = true
@@ -16,14 +16,14 @@ source "virtualbox-ovf" "dcmtk-ctf" {
 }
 
 build {
-  sources = ["source.virtualbox-ovf.dcmtk-ctf"]
+  sources = ["source.virtualbox-ovf.scp"]
 
   provisioner "shell" {
     script = "provision.sh"
   }
 
   post-processor "vagrant" {
-    output = "dcmtk-ctf.box"
+    output = "scp.box"
   }
 }
 

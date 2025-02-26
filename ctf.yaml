@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcmtk-scp
+spec:
+  type: ClusterIP
+  ports:
+  - name: dicom
+    port: 11112
+    targetPort: 11112
+  selector:
+    app: dcmtk-scp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dcmtk-scp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dcmtk-scp
+  template:
+    metadata:
+      labels:
+        app: dcmtk-scp
+    spec:
+      containers:
+      - name: scp-server
+        image: dcmtk-scp
+        securityContext:
+          readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orthanc
+spec:
+  type: LoadBalancer
+  ports:
+  - name: web
+    port: 80
+    targetPort: 4242
+  - name: dicom
+    port: 4242
+    targetPort: 4242
+  selector:
+    app: orthanc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orthanc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orthanc
+  template:
+    metadata:
+      labels:
+        app: orthanc
+    spec:
+      containers:
+      - name: orthanc-server
+        image: orthanc-pacs
