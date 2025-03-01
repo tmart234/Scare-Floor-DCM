@@ -24,7 +24,7 @@
 -- @args dicom.called_aet Called Application Entity Title. Default: ANY-SCP
 -- @args dicom.calling_aet Calling Application Entity Title. Default: ECHOSCU
 -- 
--- @author Paulino Calderon <paulino@calderonpale.com>
+-- @author Paulino Calderon <paulino@calderonpale.com> and Tyler M <tmart234@gmail.com>
 -- @copyright Same as Nmap--See https://nmap.org/book/man-legal.html
 ---
 
@@ -243,13 +243,65 @@ function associate(host, port, calling_aet, called_aet)
   stdnse.debug1("PDU Type:%d Length:%d", resp_type, resp_length)
   if resp_type == PDU_CODES["ASSOCIATE_ACCEPT"] then
     stdnse.debug1("ASSOCIATE ACCEPT message found!")
-    return true, dcm
+    local version, uid = parse_implementation_version(err:sub(offset + 1))
+    local vendor = parse_vendor_from_uid(uid)
+    return true, nil, version, vendor
   elseif resp_type == PDU_CODES["ASSOCIATE_REJECT"] then
     stdnse.debug1("ASSOCIATE REJECT message found!")
     return false, "ASSOCIATE REJECT received"
   else
     return false, "Received unknown response"
   end
+end
+
+local VENDOR_UIDS = {
+    ["1.2.276.0.7230010.3.0.3.6.0"] = "DCMTK",          -- Older DCMTK
+    ["1.2.276.0.7230010.3.0.3.6.2"] = "DCMTK",          -- Common DCMTK variant (seen in your capture)
+    ["1.4.3.6.1.4.1.78293.3.1"]     = "Orthanc",        -- From Orthanc docs
+    ["1.3.46.670589.50.1.4.1"]      = "Conquest",       -- Conquest PACS
+    ["1.2.40.0.13.1.1.1"]           = "DCM4CHE",        -- dcm4chee
+    ["1.2.840.113619.6.96"]         = "GE Healthcare",
+    ["1.2.840.113619.6.105"]        = "Philips",
+    ["1.3.12.2.1107.5.99.4036"]     = "Siemens Syngo"
+}
+
+function parse_implementation_version(data)
+    -- Use stricter offsets based on DICOM spec
+    local offset = 68  -- Start of user info after fixed association header
+    
+    -- User Information Items
+    local item_type = data:sub(offset+1, offset+1):byte()
+    if item_type ~= 0x50 then return nil, nil end  -- User Info must be type 0x50
+    
+    local user_info_length = data:sub(offset+3, offset+4):unpack(">I2")
+    offset = offset + 4
+    
+    local version, uid
+    local user_info_end = offset + user_info_length
+    
+    while offset < user_info_end do
+        if #data < offset + 4 then break end
+        
+        local sub_item_type = data:sub(offset+1, offset+1):byte()
+        local sub_length = data:sub(offset+3, offset+4):unpack(">I2")
+        
+        -- For working with malformed responses
+        sub_length = math.min(sub_length, #data - offset - 4)
+        
+        if sub_item_type == 0x55 and sub_length > 0 then  -- Implementation Version
+            version = data:sub(offset+5, offset+4+sub_length):gsub("%z", ""):gsub("^%s+", "")
+        elseif sub_item_type == 0x52 and sub_length > 0 then  -- Implementation UID
+            uid = data:sub(offset+5, offset+4+sub_length):gsub("%z", ""):gsub("^%s+", "")
+        end
+        
+        offset = offset + 4 + sub_length
+    end
+    
+    return version, uid
+end
+
+function dicom.parse_vendor_from_uid(uid)
+    return VENDOR_UIDS[uid] or nil
 end
 
 function send_pdata(dicom, data)

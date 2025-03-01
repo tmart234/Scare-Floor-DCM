@@ -19,8 +19,8 @@ sleep 15
 # Since were using port forwarding in the Docker Compose setup (4242:4242), 
 #   scanning localhost:4242 will reach the containers DICOM service, 
 #   eliminating the need to scan against the container's IP address.
-echo -e "\nTesting DICOM server on host port 4242..."
-nmap -p 11112 --script="$SCRIPT_DIR/dicom-version.nse, $SCRIPT_DIR/dicom-ping.nse" -d localhost
+echo -e "\nTesting DICOM server on host port $PORT..."
+nmap -p $PORT -d --script="$SCRIPT_DIR/dicom-ping.nse" --script-trace localhost
 
 # Show Orthanc logs
 echo -e "\nOrthanc server logs:"
