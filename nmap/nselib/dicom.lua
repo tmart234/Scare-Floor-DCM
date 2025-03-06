@@ -229,20 +229,31 @@ function parse_vendor_from_uid(uid)
   -- Clean up UID string
   uid = uid:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
   
-  stdnse.debug2("Looking up vendor for UID: '%s'", uid)
+  stdnse.debug1("Looking up vendor for UID: '%s'", uid)
   
   -- Check against patterns
   for _, pattern_info in ipairs(VENDOR_UID_PATTERNS) do
     local pattern, vendor = pattern_info[1], pattern_info[2]
+    stdnse.debug2("Checking pattern: %s for vendor: %s", pattern, vendor)
+    
     if uid:match(pattern) then
+      stdnse.debug1("Found matching vendor: %s for UID: %s", vendor, uid)
+      
       -- For DCMTK, try to extract version information from the UID
       if vendor == "DCMTK" then
         local version_part = uid:match("^1%.2%.276%.0%.7230010%.3%.0%.3%.6%.(%d+)$")
         if version_part then
-          stdnse.debug2("Extracted DCMTK version info from UID: %s", version_part)
+          stdnse.debug1("Extracted DCMTK version info from UID: %s", version_part)
           return vendor, version_part
         end
       end
+      
+      -- Check for Orthanc UID patterns
+      if vendor == "Orthanc" then
+        stdnse.debug1("Detected Orthanc from UID")
+        return vendor
+      end
+      
       return vendor
     end
   end

@@ -101,6 +101,11 @@ action = function(host, port)
     return output
   end
   
+  -- Debug output for troubleshooting
+  stdnse.debug1("Associate success - Version: %s, Vendor: %s", 
+                version or "nil", 
+                vendor or "nil")
+  
   -- Association successful
   port.version.name = "dicom"
   nmap.set_port_version(host, port)
@@ -131,19 +136,48 @@ action = function(host, port)
       
       -- Try default Orthanc port first (8042)
       local ports_to_try = {8042, port.number}
+      local orthanc_version_found = false
       
       for _, test_port in ipairs(ports_to_try) do
+        stdnse.debug1("Trying Orthanc REST API on port %d", test_port)
         local response = http.get(host, test_port, "/system", {timeout=3000})
-        if response.status == 200 then
-          local ver = response.body:match('"Version"%s*:%s*"([%d.]+)"')
-          if ver then
-            stdnse.debug1("Found Orthanc version via REST: %s", ver)
-            output.version = ver
-            output.vendor = "Orthanc"
-            output.notes = "Version confirmed via REST API"
-            break
+        if response and response.status then
+          stdnse.debug1("HTTP response status: %d from port %d", response.status, test_port)
+          
+          if response.status == 200 then
+            stdnse.debug1("Response body length: %d", #(response.body or ""))
+            
+            if response.body then
+              -- Look for Version field in JSON response
+              local ver = response.body:match('"Version"%s*:%s*"([%d.]+)"')
+              if ver then
+                stdnse.debug1("Found Orthanc version via REST: %s", ver)
+                output.version = ver
+                output.vendor = "Orthanc"
+                output.notes = "Version confirmed via REST API"
+                orthanc_version_found = true
+                
+                -- Update Nmap's version information
+                port.version.product = "Orthanc"
+                port.version.version = ver
+                nmap.set_port_version(host, port)
+                break
+              else
+                stdnse.debug1("Version field not found in JSON response")
+              end
+            end
           end
+        else
+          stdnse.debug1("Failed to connect to REST API on port %d", test_port)
         end
+      end
+      
+      if not orthanc_version_found then
+        stdnse.debug1("Could not determine Orthanc version via REST API")
+        -- Still set vendor information
+        output.vendor = "Orthanc"
+        port.version.product = "Orthanc"
+        nmap.set_port_version(host, port)
       end
     end
   end
