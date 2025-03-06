@@ -27,12 +27,18 @@ For this script we only send the A-ASSOCIATE request and look for the success co
 -- 4242/tcp open  dicom   syn-ack
 -- | dicom-ping: 
 -- |   dicom: DICOM Service Provider discovered!
--- |_  config: Called AET check enabled
+-- |   config: Any AET is accepted (Insecure)
+-- |   vendor: Orthanc
+-- |_  version: 1.11.0
 --
 -- @xmloutput
 -- <script id="dicom-ping" output="&#xa;  dicom: DICOM Service Provider discovered!&#xa;
---   config: Called AET check enabled"><elem key="dicom">DICOM Service Provider discovered!</elem>
--- <elem key="config">Called AET check enabled</elem>
+--   config: Any AET is accepted (Insecure)&#xa;
+--   vendor: Orthanc&#xa;
+--   version: 1.11.0"><elem key="dicom">DICOM Service Provider discovered!</elem>
+-- <elem key="config">Any AET is accepted (Insecure)</elem>
+-- <elem key="vendor">Orthanc</elem>
+-- <elem key="version">1.11.0</elem>
 -- </script>
 ---
 
@@ -48,11 +54,43 @@ local http = require "http"
 
 portrule = shortport.port_or_service({104, 2345, 2761, 2762, 4242, 11112}, "dicom", "tcp", "open")
 
+-- Extract version from version string based on vendor
+local function extract_clean_version(version_str, vendor)
+  if not version_str then return nil end
+  
+  if vendor == "DCMTK" then
+    -- Common DCMTK version format: OFFIS_DCMTK_362 -> 3.6.2
+    local major, minor, patch = version_str:match("DCMTK_(%d)(%d+)(%d)")
+    if major and minor and patch then
+      return string.format("%s.%s.%s", major, minor, patch)
+    end
+    
+    -- Alternative format: DCMTK_364
+    major, minor, patch = version_str:match("DCMTK_(%d)(%d)(%d)")
+    if major and minor and patch then
+      return string.format("%s.%s.%s", major, minor, patch)
+    end
+  end
+  
+  -- Try standard version format: x.y.z
+  local version = version_str:match("(%d+%.%d+%.%d+)")
+  if version then
+    return version
+  end
+  
+  -- If all else fails, return as is
+  return version_str
+end
+
 action = function(host, port)
   local output = stdnse.output_table()
+  
+  -- Try association
   local dcm_status, err, version, vendor = dicom.associate(host, port)
+  
+  -- Handle association rejection
   if dcm_status == false then
-    stdnse.debug1("Association failed:%s", err)
+    stdnse.debug1("Association failed: %s", err or "Unknown error")
     if err == "ASSOCIATE REJECT received" then
       port.version.name = "dicom"
       nmap.set_port_version(host, port)
@@ -63,32 +101,52 @@ action = function(host, port)
     return output
   end
   
+  -- Association successful
   port.version.name = "dicom"
   nmap.set_port_version(host, port)
 
   output.dicom = "DICOM Service Provider discovered!"
   output.config = "Any AET is accepted (Insecure)"
 
-if version then
-  stdnse.debug1("Detected DCMTK version: %s", version)
-  output.dcmtk_version = version
-end
+  -- Add version information if available
+  if version then
+    stdnse.debug1("Detected DICOM version string: %s", version)
+    local clean_version = extract_clean_version(version, vendor)
+    if clean_version then
+      stdnse.debug1("Cleaned version: %s", clean_version)
+      output.version = clean_version
+    else
+      output.version = version
+    end
+  end
 
-  -- Vendor detection logic
+  -- Add vendor information if available
   if vendor then
+    stdnse.debug1("Detected DICOM vendor: %s", vendor)
     output.vendor = vendor
     
     -- Orthanc-specific REST check
     if vendor == "Orthanc" then
-      local response = http.get(host, 8042, "/system", {timeout=3000})
-      if response.status == 200 then
-        local ver = response.body:match('"Version"%s*:%s*"([%d.]+)"')
-        if ver then
-          output.orthanc_version = ver
-          output.vendor = "Orthanc (Confirmed via REST)"
+      stdnse.debug1("Detected Orthanc, trying REST API for version...")
+      
+      -- Try default Orthanc port first (8042)
+      local ports_to_try = {8042, port.number}
+      
+      for _, test_port in ipairs(ports_to_try) do
+        local response = http.get(host, test_port, "/system", {timeout=3000})
+        if response.status == 200 then
+          local ver = response.body:match('"Version"%s*:%s*"([%d.]+)"')
+          if ver then
+            stdnse.debug1("Found Orthanc version via REST: %s", ver)
+            output.version = ver
+            output.vendor = "Orthanc"
+            output.notes = "Version confirmed via REST API"
+            break
+          end
         end
       end
     end
+  end
 
   return output
 end
