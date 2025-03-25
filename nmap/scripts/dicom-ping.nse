@@ -58,6 +58,7 @@ portrule = shortport.port_or_service({104, 2345, 2761, 2762, 4242, 11112}, "dico
 local function extract_clean_version(version_str, vendor)
   if not version_str then return nil end
   
+  -- DCMTK versions
   if vendor == "DCMTK" then
     -- Common DCMTK version format: OFFIS_DCMTK_362 -> 3.6.2
     local major, minor, patch = version_str:match("DCMTK_(%d)(%d+)(%d)")
@@ -72,8 +73,54 @@ local function extract_clean_version(version_str, vendor)
     end
   end
   
-  -- Try standard version format: x.y.z
+  -- Horos/OsiriX versions
+  if vendor == "Horos" or vendor == "OsiriX" then
+    -- Format: Horos-v3.3.6 or OsiriX-v9.0.2
+    local ver = version_str:match("v(%d+%.%d+%.%d+)")
+    if ver then
+      return ver
+    end
+  end
+  
+  -- ClearCanvas versions
+  if vendor == "ClearCanvas" then
+    -- Format: ClearCanvas_2.0.12345.37893
+    local major, minor = version_str:match("ClearCanvas_(%d+)%.(%d+)")
+    if major and minor then
+      local build = version_str:match("ClearCanvas_%d+%.%d+%.(%d+)")
+      if build then
+        return string.format("%s.%s.%s", major, minor, build)
+      end
+      return string.format("%s.%s", major, minor)
+    end
+  end
+  
+  -- FujiFilm Synapse versions
+  if vendor == "FujiFilm" then
+    -- Format: Synapse_5.7.110
+    local ver = version_str:match("Synapse_(%d+%.%d+%.%d+)")
+    if ver then
+      return ver
+    end
+  end
+  
+  -- Agfa IMPAX versions
+  if vendor == "Agfa" then
+    -- Format: IMPAX_6.5.1.1234
+    local ver = version_str:match("IMPAX_(%d+%.%d+%.%d+%.%d+)")
+    if ver then
+      return ver
+    end
+  end
+  
+  -- Generic version detection: Try standard version format first
   local version = version_str:match("(%d+%.%d+%.%d+)")
+  if version then
+    return version
+  end
+  
+  -- Try just major.minor format
+  version = version_str:match("(%d+%.%d+)")
   if version then
     return version
   end

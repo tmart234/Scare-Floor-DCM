@@ -56,15 +56,25 @@ for i, v in pairs(PDU_CODES) do
   PDU_NAMES[v] = i
 end
 
--- Define vendor UIDs lookup table with patterns
+-- Define vendor UIDs lookup table with patterns and version indicators
 local VENDOR_UID_PATTERNS = {
-  {"^1%.2%.276%.0%.7230010%.3%.0%.3%.6%.", "DCMTK"},         -- All DCMTK variants
-  {"^1%.4%.3%.6%.1%.4%.1%.78293%.3%.1",    "Orthanc"},       -- Orthanc
-  {"^1%.3%.46%.670589%.50%.1%.4",          "Conquest"},      -- Conquest PACS
-  {"^1%.2%.40%.0%.13%.1%.1",               "DCM4CHE"},       -- dcm4chee
-  {"^1%.2%.840%.113619%.6%.96",            "GE Healthcare"}, -- GE
-  {"^1%.2%.840%.113619%.6%.105",           "Philips"},       -- Philips
-  {"^1%.3%.12%.2%.1107%.5%.99",            "Siemens Syngo"}  -- Siemens
+  {"^1%.2%.276%.0%.7230010%.3%.0%.3%.6%.(%d+)$", "DCMTK", true},    -- DCMTK with version extraction
+  {"^1%.2%.276%.0%.7230010%.3%.0%.3%.6",         "DCMTK"},          -- General DCMTK
+  {"^1%.4%.3%.6%.1%.4%.1%.78293%.3%.1",          "Orthanc"},        -- Orthanc
+  {"^1%.3%.46%.670589%.50%.1%.4",                "Conquest"},       -- Conquest PACS
+  {"^1%.2%.40%.0%.13%.1%.1",                     "DCM4CHE"},        -- dcm4chee
+  {"^1%.2%.840%.113619%.6%.96",                  "GE Healthcare"},  -- GE
+  {"^1%.2%.840%.113619%.6%.105",                 "Philips"},        -- Philips
+  {"^1%.3%.12%.2%.1107%.5%.99",                  "Siemens Syngo"},  -- Siemens
+  {"^1%.3%.12%.2%.1107%.5%.8",                   "Siemens"},        -- Other Siemens
+  {"^1%.2%.840%.10008%.5%.1%.4",                 "DICOM Standard"}, -- DICOM Standard
+  {"^1%.2%.124%.113532%.3%.1",                   "Merge Healthcare"},-- Merge PACS
+  {"^1%.2%.826%.0%.1%.3680043%.9%.3%.9%.1",      "ClearCanvas"},    -- ClearCanvas
+  {"^1%.2%.840%.114257%.1%.15",                  "Horos"},          -- Horos
+  {"^1%.2%.826%.0%.1%.3680043%.8%.1057%.1%.2%.%d+%.%d+$", "OsiriX"},-- OsiriX
+  {"^1%.2%.392%.200036%.9%.1%.1%.1",             "FujiFilm"},       -- FujiFilm
+  {"^1%.2%.840%.114340%.2%.1",                   "Agfa"},           -- Agfa
+  {"^1%.2%.840%.113704%.7%.1%.1%.1%.1%.1",       "Carestream"}      -- Carestream
 }
 
 ---
@@ -159,16 +169,48 @@ end
 -- @return version, uid Implementation version string and UID
 ---
 function parse_implementation_version(data)
-  stdnse.debug3("Parsing implementation version from response of length %d", #data)
+  stdnse.debug1("Parsing implementation version from response of length %d", #data)
+  
+  -- Initialize variables
+  local version, uid = nil, nil
   
   if #data < 74 then -- Minimum length for a response with user info
     stdnse.debug1("Response too short for version parsing: %d bytes", #data)
     return nil, nil
   end
   
+  -- First try direct hex pattern extraction for common patterns
+  -- Look for type 0x52 (implementation UID) and type 0x55 (implementation version)
+  -- Format is typically: Type(1) + Reserved(1) + Length(2) + Value(N)
+  
+  -- Find all patterns that look like UIDs (type 0x52)
+  for pattern in data:gmatch("\x52\x00..([%d%.]+)") do
+    if pattern:match("^%d+%.%d+%.%d+%.") then
+      -- Found a potential UID pattern
+      uid = pattern:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+      stdnse.debug1("Pattern extraction - UID: %s", uid)
+      break
+    end
+  end
+  
+  -- Find all patterns that look like version strings (type 0x55)
+  for pattern in data:gmatch("\x55\x00..(.-)\0") do
+    if #pattern > 0 then
+      -- Found a potential version string
+      version = pattern:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+      stdnse.debug1("Pattern extraction - Version: %s", version)
+      break
+    end
+  end
+  
+  -- If we found both through pattern matching, return early
+  if uid and version then
+    return version, uid
+  end
+  
+  -- Fall back to traditional parsing
   -- Start after the fixed association header (68 bytes)
   local offset = 68
-  local version, uid = nil, nil
   
   -- Find the User Information item (type 0x50)
   while offset < #data - 4 do
@@ -194,13 +236,15 @@ function parse_implementation_version(data)
         end
         
         if sub_type == 0x52 then -- Implementation Class UID
-          uid = string.sub(data, offset + 5, offset + 4 + sub_length)
-          uid = uid:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
-          stdnse.debug2("Found Implementation UID: %s", uid)
+          local extracted_uid = string.sub(data, offset + 5, offset + 4 + sub_length)
+          extracted_uid = extracted_uid:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+          stdnse.debug2("Found Implementation UID: %s", extracted_uid)
+          if not uid then uid = extracted_uid end
         elseif sub_type == 0x55 then -- Implementation Version
-          version = string.sub(data, offset + 5, offset + 4 + sub_length)
-          version = version:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
-          stdnse.debug2("Found Implementation Version: %s", version)
+          local extracted_version = string.sub(data, offset + 5, offset + 4 + sub_length)
+          extracted_version = extracted_version:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+          stdnse.debug2("Found Implementation Version: %s", extracted_version)
+          if not version then version = extracted_version end
         end
         
         offset = offset + 4 + sub_length
@@ -213,18 +257,22 @@ function parse_implementation_version(data)
     end
   end
   
+  -- Add detailed debug output
+  stdnse.debug1("Final extracted values - Version: %s, UID: %s", 
+                version or "nil", uid or "nil")
+  
   return version, uid
 end
 
 ---
--- parse_vendor_from_uid(uid) Gets vendor name from the UID using pattern matching
+-- identify_vendor_from_uid(uid) Gets vendor name and version from the UID using pattern matching
 --
 -- @param uid Implementation UID string
 -- @return vendor Vendor name or nil if unknown
 -- @return version_part Optional version part extracted from the UID
 ---
-function parse_vendor_from_uid(uid)
-  if not uid then return nil end
+function identify_vendor_from_uid(uid)
+  if not uid then return nil, nil end
   
   -- Clean up UID string
   uid = uid:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -233,33 +281,87 @@ function parse_vendor_from_uid(uid)
   
   -- Check against patterns
   for _, pattern_info in ipairs(VENDOR_UID_PATTERNS) do
-    local pattern, vendor = pattern_info[1], pattern_info[2]
-    stdnse.debug2("Checking pattern: %s for vendor: %s", pattern, vendor)
+    local pattern, vendor, extract_version = pattern_info[1], pattern_info[2], pattern_info[3]
     
-    if uid:match(pattern) then
-      stdnse.debug1("Found matching vendor: %s for UID: %s", vendor, uid)
-      
-      -- For DCMTK, try to extract version information from the UID
-      if vendor == "DCMTK" then
-        local version_part = uid:match("^1%.2%.276%.0%.7230010%.3%.0%.3%.6%.(%d+)$")
-        if version_part then
-          stdnse.debug1("Extracted DCMTK version info from UID: %s", version_part)
-          return vendor, version_part
-        end
+    -- Check if UID matches this pattern
+    local match = {uid:match(pattern)}
+    if #match > 0 then
+      -- If this pattern contains version extraction
+      if extract_version and match[1] then
+        local version_part = match[1]
+        stdnse.debug1("Extracted version info from UID: %s", version_part)
+        return vendor, version_part
       end
-      
-      -- Check for Orthanc UID patterns
-      if vendor == "Orthanc" then
-        stdnse.debug1("Detected Orthanc from UID")
-        return vendor
-      end
-      
-      return vendor
+      return vendor, nil
     end
   end
   
-  return nil
+  return nil, nil
 end
+
+---
+-- extract_clean_version(version_str, vendor) Standardizes version strings based on vendor formats
+--
+-- @param version_str Version string to clean
+-- @param vendor Vendor name to determine format
+-- @return Cleaned version string
+---
+function extract_clean_version(version_str, vendor)
+  if not version_str then return nil end
+  
+  -- DCMTK versions
+  if vendor == "DCMTK" then
+    -- Common DCMTK version format: OFFIS_DCMTK_362 -> 3.6.2
+    local major, minor, patch = version_str:match("DCMTK_(%d)(%d+)(%d)")
+    if major and minor and patch then
+      return string.format("%s.%s.%s", major, minor, patch)
+    end
+    
+    -- Alternative format: DCMTK_364
+    major, minor, patch = version_str:match("DCMTK_(%d)(%d)(%d)")
+    if major and minor and patch then
+      return string.format("%s.%s.%s", major, minor, patch)
+    end
+  end
+  
+  -- Horos/OsiriX versions
+  if vendor == "Horos" or vendor == "OsiriX" then
+    -- Format: Horos-v3.3.6 or OsiriX-v9.0.2
+    local ver = version_str:match("v(%d+%.%d+%.%d+)")
+    if ver then
+      return ver
+    end
+  end
+  
+  -- ClearCanvas versions
+  if vendor == "ClearCanvas" then
+    -- Format: ClearCanvas_2.0.12345.37893
+    local major, minor = version_str:match("ClearCanvas_(%d+)%.(%d+)")
+    if major and minor then
+      local build = version_str:match("ClearCanvas_%d+%.%d+%.(%d+)")
+      if build then
+        return string.format("%s.%s.%s", major, minor, build)
+      end
+      return string.format("%s.%s", major, minor)
+    end
+  end
+  
+  -- Generic version detection: Try standard version format first
+  local version = version_str:match("(%d+%.%d+%.%d+)")
+  if version then
+    return version
+  end
+  
+  -- Try just major.minor format
+  version = version_str:match("(%d+%.%d+)")
+  if version then
+    return version
+  end
+  
+  -- If all else fails, return as is
+  return version_str
+end
+
 
 ---
 -- associate(host, port) Attempts to associate to a DICOM Service Provider by sending an A-ASSOCIATE request.
@@ -360,34 +462,65 @@ function associate(host, port, calling_aet, called_aet)
 
   local resp_type, _, resp_length = string.unpack(">B B I4", err)
   stdnse.debug1("PDU Type:%d Length:%d", resp_type, resp_length)
+
   if resp_type == PDU_CODES["ASSOCIATE_ACCEPT"] then
     stdnse.debug1("ASSOCIATE ACCEPT message found!")
-    local version, uid = parse_implementation_version(err)
-    local vendor, uid_version = parse_vendor_from_uid(uid)
     
-    -- If we didn't get a version from implementation version but got version info from UID
-    if not version and uid_version and vendor == "DCMTK" then
-      -- Convert UID version number to DCMTK version format
-      -- For example, if UID ends with "6", it could be DCMTK 3.6.x
-      if uid_version == "0" then
-        version = "OFFIS_DCMTK_360"
-      elseif uid_version == "2" then
-        version = "OFFIS_DCMTK_362"
-      elseif uid_version == "4" then
-        version = "OFFIS_DCMTK_364"
-      elseif uid_version == "6" then
-        version = "OFFIS_DCMTK_366"
-      else
-        version = "OFFIS_DCMTK_" .. uid_version
+    -- Direct string inspection - more reliable than complex parsing
+    local version = nil
+    local uid = nil
+    local vendor = nil
+    
+    -- Look for implementation version name (type 0x55)
+    local version_start = err:find("\x55\x00", 1, true)
+    if version_start then
+      -- Pattern: Type(0x55) + Reserved(0x00) + Length(2 bytes) + String
+      local len_bytes = err:sub(version_start + 2, version_start + 3)
+      local _, version_len = string.unpack(">I2", len_bytes)
+      if version_len > 0 and version_len < 64 then
+        version = err:sub(version_start + 4, version_start + 3 + version_len)
+        version = version:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+        stdnse.debug1("Found implementation version: %s", version)
       end
-      stdnse.debug1("Generated version from UID: %s", version)
     end
     
-    stdnse.debug1("Version: %s, UID: %s, Vendor: %s, UID Version: %s", 
+    -- Look for implementation class UID (type 0x52)
+    local uid_start = err:find("\x52\x00", 1, true)
+    if uid_start then
+      -- Pattern: Type(0x52) + Reserved(0x00) + Length(2 bytes) + String
+      local len_bytes = err:sub(uid_start + 2, uid_start + 3)
+      local _, uid_len = string.unpack(">I2", len_bytes)
+      if uid_len > 0 and uid_len < 64 then
+        uid = err:sub(uid_start + 4, uid_start + 3 + uid_len)
+        uid = uid:gsub("%z", ""):gsub("^%s+", ""):gsub("%s+$", "")
+        stdnse.debug1("Found implementation UID: %s", uid)
+      end
+    end
+    
+    -- Use centralized vendor identification
+    if uid then
+      vendor, version_part = identify_vendor_from_uid(uid)
+      
+      -- If we found a version in the UID, use it
+      if version_part then
+        version = extract_clean_version(version_part, vendor)
+      elseif version then
+        -- Otherwise use the version from the response
+        version = extract_clean_version(version, vendor)
+      end
+    -- Fallback to version-based detection if no UID found
+    elseif version then
+      if version:match("OFFIS_DCMTK") then
+        vendor = "DCMTK"
+        version = extract_clean_version(version, vendor)
+      end
+    end
+    
+    -- Log what we found for debugging
+    stdnse.debug1("Final values - Version: %s, UID: %s, Vendor: %s", 
                   version or "nil", 
                   uid or "nil", 
-                  vendor or "nil",
-                  uid_version or "nil")
+                  vendor or "nil")
     
     return true, nil, version, vendor
   elseif resp_type == PDU_CODES["ASSOCIATE_REJECT"] then
@@ -411,3 +544,4 @@ function send_pdata(dicom, data)
 end
 
 return _ENV
+
