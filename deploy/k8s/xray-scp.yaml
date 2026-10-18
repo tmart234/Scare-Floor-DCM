@@ -1,0 +1,94 @@
+# ER Portable X-ray modality SCP - Scare Floor DCM stages 1 & 2.
+#
+# Exposes raw TCP 11112 so players can reach it with nmap (dicom-ping /
+# dicom-brute) and findscu. Default Service type is LoadBalancer (one external
+# address per team namespace); switch to NodePort via kustomize for bare-metal.
+#
+# Flags are injected from the `scare-floor-flags` Secret, never baked into the
+# image (see flags.secret.example.yaml).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xray-scp
+  labels:
+    app: xray-scp
+    stage: "dicom-1-2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: xray-scp
+  template:
+    metadata:
+      labels:
+        app: xray-scp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: xray-scp
+          # Set to your registry; build with:
+          #   docker build -f challenge/xray-scp/Dockerfile -t <img> .
+          image: REGISTRY/scare-floor-xray-scp:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: dicom
+              containerPort: 11112
+              protocol: TCP
+          env:
+            - name: XRAY_PORT
+              value: "11112"
+            - name: FLAG1_AE_TITLE
+              valueFrom:
+                secretKeyRef:
+                  name: scare-floor-flags
+                  key: FLAG1_AE_TITLE
+            - name: FLAG2_PRIVATE
+              valueFrom:
+                secretKeyRef:
+                  name: scare-floor-flags
+                  key: FLAG2_PRIVATE
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 11112
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 11112
+            initialDelaySeconds: 5
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xray-scp
+  labels:
+    app: xray-scp
+spec:
+  # Per-team external address for the DICOM port. For bare-metal / no cloud LB,
+  # override to NodePort in kustomization.yaml.
+  type: LoadBalancer
+  selector:
+    app: xray-scp
+  ports:
+    - name: dicom
+      port: 11112
+      targetPort: 11112
+      protocol: TCP

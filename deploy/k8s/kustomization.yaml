@@ -1,0 +1,37 @@
+# Base kustomization for one team's Scare Floor DCM instance.
+#
+# Per-team deploy (own namespace, own registry image, own flags):
+#
+#   kubectl create namespace team-07
+#   kubectl -n team-07 apply -f flags.secret.yaml        # your real flags
+#   kustomize edit set image REGISTRY/scare-floor-xray-scp=myreg/xray-scp:v1
+#   kubectl -n team-07 apply -k deploy/k8s
+#
+# The flag Secret is applied separately so it never lives in git.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - xray-scp.yaml
+  - orthanc-pacs.yaml
+
+commonLabels:
+  ctf: scare-floor-dcm
+
+images:
+  - name: REGISTRY/scare-floor-xray-scp
+    newName: REGISTRY/scare-floor-xray-scp
+    newTag: latest
+
+# --- Bare-metal / no cloud LoadBalancer? Uncomment to expose DICOM via NodePort
+# patches:
+#   - target:
+#       kind: Service
+#       name: xray-scp
+#     patch: |-
+#       - op: replace
+#         path: /spec/type
+#         value: NodePort
+#       - op: add
+#         path: /spec/ports/0/nodePort
+#         value: 31112

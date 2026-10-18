@@ -1,0 +1,130 @@
+# =============================================================================
+# Scare Floor DCM - shared scenario (single source of truth)
+# =============================================================================
+# This file is consumed by:
+#   - challenge/xray-scp/xray_scp.py   (the live X-ray modality SCP, stages 1-2)
+#   - inventory/gen_inventory.py       (the WiFi-stage "device inventory" page)
+#   - (later) the HL7/ORM stage        (reuses accession + placer order number)
+#
+# Keeping all stages pointed at this file means the AE titles a player harvests
+# in the WiFi stage, the AE title they brute-force here, the inmate they C-FIND,
+# and the order the HL7 stage replays are guaranteed to line up.
+#
+# FLAGS: the values below are DEFAULTS / examples for local dev. In a real
+# deploy they are overridden by environment variables (see deploy/k8s), so the
+# committed repo never pins the production flags. Override keys:
+#   FLAG1_AE_TITLE  -> xray.called_aet_flag
+#   FLAG2_PRIVATE   -> inmate.private_tag_flag
+# =============================================================================
+
+facility:
+  name: "Scare Floor Correctional - Medical Imaging"
+  theme: "prison-hospital"
+
+# ---------------------------------------------------------------------------
+# DICOM device fleet. The WiFi stage leaks this as a "device inventory" page.
+# `calling_aet` is how each device identifies itself when it opens an
+# association. The X-ray endpoint only accepts associations whose CALLING AE
+# title is one of these known devices (see xray.require_calling_aet).
+# ---------------------------------------------------------------------------
+devices:
+  - name: "ER Portable X-ray"
+    calling_aet: "XRAY_ER_01"
+    host: "xray-scp"
+    role: "modality"
+  - name: "OR-3 Mobile C-arm"
+    calling_aet: "CARM_OR_03"
+    host: "carm"
+    role: "modality"
+  - name: "Core PACS Archive"
+    calling_aet: "PACS_CORE_01"
+    host: "orthanc-pacs"
+    role: "archive"
+  - name: "CT Scanner (Block B2)"
+    calling_aet: "CT_B2_02"
+    host: "ct"
+    role: "modality"
+  - name: "Ultrasound (Clinic 4)"
+    calling_aet: "US_CLINIC_04"
+    host: "us"
+    role: "modality"
+
+# ---------------------------------------------------------------------------
+# The X-ray endpoint = the target for stages 1 and 2.
+# ---------------------------------------------------------------------------
+xray:
+  listen_port: 11112
+
+  # STAGE 1 FLAG. The X-ray only accepts a single CALLED AE title. Discovering
+  # it (nmap --script dicom-brute, seeded with the service-AET pool below) IS
+  # the flag. AE titles are capped at 16 bytes, so this flag is a short secret
+  # string the scoreboard stores verbatim (NOT the usual BHV{...} wrapper).
+  called_aet_flag: "BHV_XR_9F2C71A4"        # <= 16 chars; override with FLAG1_AE_TITLE
+
+  # Only these CALLING AE titles may associate. The player harvests one of
+  # these from the WiFi device-inventory page and passes it to dicom-brute as
+  # dicom.calling_aet=... Anything else gets A-ASSOCIATE-RJ (visible in Wireshark).
+  require_calling_aet:
+    - "XRAY_ER_01"
+    - "CARM_OR_03"
+    - "PACS_CORE_01"
+
+  # Service/console AE-title pool published on the inventory page. The real
+  # accepted called AET (the flag) is hidden among these decoys; brute force
+  # confirms which one the endpoint actually answers to.
+  service_aet_pool:
+    - "SRV_DCM_01"
+    - "SVC_FIELD_ENG"
+    - "AETADMIN"
+    - "DCM4CHEE"
+    - "XR_SERVICE"
+    - "WORKSTATION1"
+    - "MODALITY_SVC"
+    - "BHV_XR_9F2C71A4"   # <-- the live one (replaced at deploy via FLAG1_AE_TITLE)
+    - "STORESCP"
+    - "ARCHIVE_SVC"
+
+# ---------------------------------------------------------------------------
+# The "known inmate" the player C-FINDs in stage 2. The brief names Sullivan;
+# the private tag on his chest film carries flag 2.
+# ---------------------------------------------------------------------------
+inmate:
+  patient_name: "SULLIVAN^JAMES"
+  patient_id: "INM-11771"
+  birth_date: "19810402"
+  sex: "M"
+  study:
+    accession_number: "ACC-SCARE-0001"
+    study_description: "CHEST XR PORTABLE"
+    modality: "CR"
+    study_instance_uid: "1.2.826.0.1.3680043.8.498.11771.1.1"
+  # STAGE 2 FLAG, returned in a private DICOM tag on this inmate's C-FIND
+  # response. Private creator (0009,0010)="SCARE_FLOOR_DCM"; data at (0009,1001).
+  private_tag_flag: "BHV{sc4re_fl00r_pr1v4te_t4g_xr}"   # override with FLAG2_PRIVATE
+
+# A couple of decoy patients so a wildcard C-FIND returns a realistic census
+# and the player has to find the named inmate.
+decoy_patients:
+  - patient_name: "BOGGS^RANDALL"
+    patient_id: "INM-20983"
+    birth_date: "19760815"
+    sex: "M"
+  - patient_name: "WAZOWSKI^MICHAEL"
+    patient_id: "INM-30011"
+    birth_date: "19900607"
+    sex: "M"
+
+# ---------------------------------------------------------------------------
+# Modality Worklist entry = the seam into the HL7 stage. The accession number
+# and placer order number here are exactly what the HL7 ORM^O01 message in the
+# next phase is keyed on. (MWL handler is scaffolded now, fleshed out next.)
+# ---------------------------------------------------------------------------
+worklist:
+  scheduled_station_aet: "BHV_XR_9F2C71A4"
+  accession_number: "ACC-SCARE-0001"
+  placer_order_number: "ORD-7742"
+  filler_order_number: "FIL-7742"
+  scheduled_procedure_step_id: "SPS-0001"
+  scheduled_start_date: "20251018"
+  scheduled_start_time: "0900"
+  requested_procedure_description: "CHEST XR PORTABLE"

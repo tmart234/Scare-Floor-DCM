@@ -1,0 +1,19 @@
+# LOCAL DEV ONLY — smoke-test the X-ray SCP without a cluster.
+# Production is Kubernetes (see deploy/k8s). Build context is the repo root.
+#
+#   docker compose -f deploy/docker-compose.yml up --build
+#   nmap -p 11112 --script dicom-ping 127.0.0.1
+#
+services:
+  xray-scp:
+    build:
+      context: ..
+      dockerfile: challenge/xray-scp/Dockerfile
+    image: scare-floor/xray-scp:dev
+    ports:
+      - "11112:11112"      # raw DICOM TCP, reachable by nmap/findscu
+    environment:
+      # Dev flags; production injects these from a k8s Secret.
+      FLAG1_AE_TITLE: "BHV_XR_9F2C71A4"
+      FLAG2_PRIVATE: "BHV{sc4re_fl00r_pr1v4te_t4g_xr}"
+    restart: unless-stopped

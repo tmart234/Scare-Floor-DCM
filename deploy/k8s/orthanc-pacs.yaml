@@ -1,0 +1,64 @@
+# Core PACS archive (Orthanc) - SCAFFOLD for the later c-arm -> PACS -> MWL
+# stages. Not required for stages 1 & 2; included so per-team namespaces are
+# complete and the X-ray can be pointed at a store destination next.
+#
+# Internal-only (ClusterIP): the archive is reached by modalities inside the
+# namespace, not brute-forced from outside in stages 1-2.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orthanc-pacs
+  labels:
+    app: orthanc-pacs
+    stage: "scaffold"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orthanc-pacs
+  template:
+    metadata:
+      labels:
+        app: orthanc-pacs
+    spec:
+      containers:
+        - name: orthanc
+          image: jodogne/orthanc-plugins:1.12.4
+          ports:
+            - name: dicom
+              containerPort: 4242
+            - name: http
+              containerPort: 8042
+          env:
+            - name: ORTHANC__NAME
+              value: "SCARE_FLOOR_PACS"
+            - name: ORTHANC__DICOM_AET
+              value: "PACS_CORE_01"
+            - name: ORTHANC__DICOM_PORT
+              value: "4242"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orthanc-pacs
+  labels:
+    app: orthanc-pacs
+spec:
+  type: ClusterIP
+  selector:
+    app: orthanc-pacs
+  ports:
+    - name: dicom
+      port: 4242
+      targetPort: 4242
+    - name: http
+      port: 8042
+      targetPort: 8042

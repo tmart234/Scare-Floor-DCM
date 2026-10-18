@@ -1,3 +1,14 @@
 /.vagrant
 *.vdi
 /packer_cache
+
+# Real per-event flags — never commit (use flags.secret.example.yaml as a template)
+deploy/k8s/flags.secret.yaml
+
+# Generated WiFi-stage artifact (regenerate from shared/scenario.yaml)
+inventory/device-inventory.html
+
+# Python / venv cruft
+__pycache__/
+*.pyc
+.venv/

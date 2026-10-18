@@ -1,101 +1,92 @@
-# DICOM-based CTF Challenge
+# Scare Floor DCM — Biohacking Village CTF (DICOM phase)
 
-A Capture The Flag (CTF) challenge focused on DICOM medical imaging systems security. The challenge consists of an Orthanc PACS server and a DMCTK server in an isolated network environment.
-
-## Overview
-
-This CTF tests participants' understanding of DICOM protocols, medical imaging systems, and security vulnerabilities in healthcare IT infrastructure. It's designed for medium-skill-level participants who have some familiarity with networking, DICOM concepts, and basic exploitation techniques.
-
-## Prerequisites
-
-- Docker and Docker Compose
-- Python 3.6+
-- Ansible 2.9+ (for automated deployment)
-- kCTF tools (for Kubernetes deployment)
-
-## Directory Structure
+A DICOM medical-imaging CTF stage themed around a **prison hospital**
+("Scare Floor Correctional"). It is one phase of a larger village CTF:
 
 ```
-dicom-ctf/
-├── Makefile                 # Build and deployment automation
-├── ansible/                 # Ansible playbooks for deployment
-├── challenge/               # Challenge source code
-│   ├── orthanc/             # Orthanc PACS server
-│   └── dmctk/               # DMCTK server
-├── kctf/                    # kCTF configuration files
-└── README.md                # This file
+[ WiFi / network ]  →  DICOM PHASE (this repo)  →  [ HL7 / ORM ]
+                         X-ray → c-arm → PACS → modality worklist
 ```
 
-## Quick Start
+This repo currently implements the **first two stages** of the DICOM phase,
+both on a single endpoint: the ER Portable X-ray modality.
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/example/dicom-ctf.git
-   cd dicom-ctf
-   ```
+| Stage | Goal | Flag | Tooling |
+|------|------|------|---------|
+| **1** | Discover the X-ray's accepted AE title | the AE title itself (≤16-char secret, submitted verbatim) | Wireshark, `nmap --script dicom-ping` / `dicom-brute` |
+| **2** | C-FIND a known inmate; read a private tag | `BHV{...}` | `findscu`, `pynetdicom` |
 
-2. Build the Docker images:
-   ```
-   make build
-   ```
+### The chain
+1. The **WiFi stage** leaks a *device-inventory page* (`inventory/`) listing each
+   device's calling AE title plus a pool of service AE titles.
+2. **Stage 1:** the X-ray enforces both *called* and *calling* AE titles. nmap's
+   default calling AE title is rejected, so the player must reuse a leaked device
+   AE title (e.g. `XRAY_ER_01`) and brute-force the *called* AE title from the
+   service pool. The accepted called AE title **is flag 1**.
+3. **Stage 2:** with a valid association, a C-FIND for inmate **SULLIVAN^JAMES**
+   returns a private tag `(0009,"SCARE_FLOOR_DCM",01)` holding **flag 2**.
+4. **Lead-out:** a Modality Worklist C-FIND exposes the scheduled order
+   (`AccessionNumber=ACC-SCARE-0001`, `PlacerOrderNumber=ORD-7742`) — the key the
+   HL7/ORM stage replays.
 
-3. Run the challenge locally:
-   ```
-   make run
-   ```
-
-4. Access the challenge at:
-   - Main entry point: http://localhost:1337
-   - Orthanc Web Interface: http://localhost:8042
-   - DMCTK Web Interface: http://localhost:5000
-
-5. Stop the challenge:
-   ```
-   make stop
-   ```
-
-## Deployment Options
-
-### Local Deployment
-
-Use Docker Compose for local testing:
+## Layout
 ```
-make run
+shared/scenario.yaml        Single source of truth: devices, AE titles, inmate,
+                            worklist order, and (default) flags. Everything else
+                            derives from this so all stages line up.
+shared/scenario.py          Loader with deploy-time flag/env overrides.
+
+challenge/xray-scp/         The X-ray modality SCP (pynetdicom) — stages 1 & 2.
+  xray_scp.py               AE enforcement + C-ECHO + C-FIND (+ MWL scaffold).
+  Dockerfile, requirements.txt
+
+inventory/gen_inventory.py  Generates the WiFi-stage device-inventory page +
+                            the brute-force AE wordlist from scenario.yaml.
+
+deploy/k8s/                 Per-team Kubernetes manifests (LoadBalancer/NodePort
+                            exposing raw DICOM TCP), flag Secret template.
+deploy/docker-compose.yml   Local dev smoke test.
+deploy/README.md            Build + per-team deploy + networking notes.
+
+solution/                   Stage 1 & 2 walkthroughs + reference solver.
+tests/test_xray_stages.py   End-to-end AE-enforcement + C-FIND flag tests.
 ```
 
-### kCTF Deployment
+## Quick start
+```bash
+# deps
+pip install -r challenge/xray-scp/requirements.txt
 
-Deploy to Kubernetes using kCTF:
+# run the X-ray locally
+python challenge/xray-scp/xray_scp.py            # listens on :11112
+
+# in another shell — prove it works
+nmap -p 11112 --script dicom-ping 127.0.0.1
+python tests/test_xray_stages.py                 # 6/6 checks
 ```
-make setup-kctf    # Only needed once
-make deploy-kctf
-```
-
-## Challenge Description
-
-"MedImage Crisis"
-
-A major hospital's PACS system has been behaving strangely. Security teams detected unusual patterns in how the DICOM servers are communicating. Your task is to investigate the Orthanc PACS server and its connected DMCTK service to determine if there's a security breach.
-
-The flags are hidden within the system. Find all three to complete the challenge.
+See `deploy/README.md` for Docker/Kubernetes, and `solution/` for full solves.
 
 ## Flags
+- **Flag 1** (stage 1): the accepted called AE title, e.g. `BHV_XR_9F2C71A4`
+  (a short secret, not `BHV{...}` — AE titles are capped at 16 bytes).
+- **Flag 2** (stage 2): `BHV{...}` in a private DICOM tag.
 
-There are three flags to find:
-1. Hidden in a private DICOM tag
-2. Embedded in JavaScript source code
-3. Only accessible by exploiting a race condition between servers
+Flags are injected at deploy time via a Kubernetes Secret
+(`deploy/k8s/flags.secret.example.yaml`); the committed defaults are examples
+only. Rotate per event — see `deploy/README.md`.
 
-## Hints
+## Status / roadmap
+- ✅ Stage 1 — AE-title enforcement + brute force (verified with nmap).
+- ✅ Stage 2 — C-FIND private-tag flag (verified with findscu & pynetdicom).
+- 🔜 c-arm C-STORE → Orthanc PACS (scaffolded: `deploy/k8s/orthanc-pacs.yaml`).
+- 🔜 Modality Worklist → HL7/ORM handoff (worklist responder already live).
 
-- DICOM protocols often use ports 104 or 11112, but sometimes custom ports are used.
-- The DMCTK server's web interface processes search queries in an interesting way.
-- DICOM files can contain private tags that aren't part of the standard.
+> **Legacy:** `challenge/dcmtk/`, `challenge/orthanc/`, `packer/`, and
+> `solution/{scapy_DICOM.py,fuzzer,cve_datasets.py}` are from the previous
+> "MedImage Crisis" design and are **not** part of stages 1–2. They're kept for
+> possible reuse in later stages; ignore them when working on this phase.
 
-## Resources
-
-The `docs` directory contains additional resources for participants less familiar with DICOM protocols.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+---
+This is authorized Biohacking Village CTF content. The deliberate
+"misconfigurations" (AE-title trust, private-tag over-sharing on C-FIND) are the
+intended teaching points about medical-imaging network security.
